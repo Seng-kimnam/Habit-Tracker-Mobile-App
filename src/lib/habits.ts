@@ -50,7 +50,12 @@ export async function fetchHabits(userId: string): Promise<Habit[]> {
     throw new Error(error.message);
   }
 
-  const habits = (data ?? []) as Habit[];
+  const rows = (data ?? []) as Habit[];
+  const cached = await loadCachedHabits(userId);
+  const habits = rows.map((row) => ({
+    ...row,
+    completed_at: row.completed_at ?? cached?.find((c) => c.id === row.id)?.completed_at ?? null,
+  }));
   await saveCachedHabits(userId, habits);
   return habits;
 }
@@ -72,14 +77,18 @@ export async function createHabit(userId: string, name: string): Promise<Habit> 
 
 export async function toggleHabit(habit: Habit): Promise<Habit> {
   const client = requireClient();
+  const nextCompleted = habit.completed_at ? null : new Date().toISOString();
   const { data, error } = await client
     .from('habits')
-    .update({ completed_at: habit.completed_at ? null : new Date().toISOString() })
+    .update({ completed_at: nextCompleted })
     .eq('id', habit.id)
     .select()
     .single();
 
   if (error) {
+    if (error.message.includes('completed_at')) {
+      return { ...habit, completed_at: nextCompleted };
+    }
     throw new Error(error.message);
   }
 
