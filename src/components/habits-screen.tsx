@@ -15,6 +15,7 @@ import {
   toggleHabit,
   type Habit,
 } from '@/lib/habits';
+import { shareHabit } from '@/lib/share';
 
 export function HabitsScreen() {
   const { session, signOut } = useAuth();
@@ -89,6 +90,15 @@ export function HabitsScreen() {
     }
   }
 
+  async function handleShare(target: Habit) {
+    setError(null);
+    try {
+      await shareHabit(target.name, Boolean(target.completed_at));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not share habit');
+    }
+  }
+
   async function handleSignOut() {
     await clearCachedHabits(activeUserId).catch(() => {});
     await signOut().catch(() => {});
@@ -148,6 +158,22 @@ export function HabitsScreen() {
                   }>
                   {item.name}
                 </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Share ${item.name}`}
+                onPress={() => handleShare(item)}
+                hitSlop={8}
+                className="active:opacity-70">
+                <SymbolView
+                  tintColor={theme.textSecondary}
+                  name={{
+                    ios: 'square.and.arrow.up',
+                    android: 'share',
+                    web: 'share',
+                  }}
+                  size={18}
+                />
               </Pressable>
               <Pressable
                 accessibilityRole="button"
