@@ -5,8 +5,10 @@ import { supabase } from '@/lib/supabase';
 export type Habit = {
   id: string;
   user_id: string;
-  title: string;
-  completed_at: string | null;
+  name: string;
+  frequency?: string | null;
+  color?: string | null;
+  completed_at?: string | null;
   created_at: string;
 };
 
@@ -53,11 +55,11 @@ export async function fetchHabits(userId: string): Promise<Habit[]> {
   return habits;
 }
 
-export async function createHabit(userId: string, title: string): Promise<Habit> {
+export async function createHabit(userId: string, name: string): Promise<Habit> {
   const client = requireClient();
   const { data, error } = await client
     .from('habits')
-    .insert({ user_id: userId, title })
+    .insert({ user_id: userId, name })
     .select()
     .single();
 

@@ -74,13 +74,13 @@ export function HabitsScreen() {
   const activeUserId = session.user.id;
 
   async function handleAdd() {
-    const title = draft.trim();
-    if (!title) {
+    const name = draft.trim();
+    if (!name) {
       return;
     }
     setError(null);
     try {
-      const habit = await createHabit(activeUserId, title);
+      const habit = await createHabit(activeUserId, name);
       const next = [...habits, habit];
       setHabits(next);
       await saveCachedHabits(activeUserId, next);
@@ -190,7 +190,7 @@ export function HabitsScreen() {
                   <ThemedText
                     type="small"
                     style={habit.completed_at ? styles.completedText : undefined}>
-                    {habit.title}
+                    {habit.name}
                   </ThemedText>
                 </Pressable>
                 <Pressable
