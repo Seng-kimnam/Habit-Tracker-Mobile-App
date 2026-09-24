@@ -10,7 +10,7 @@ import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
-const ExploreSections = lazy(() => import('../components/explore-sections'));
+const ExploreSections = lazy(() => import('../../components/explore-sections'));
 
 export default function TabTwoScreen() {
   const safeAreaInsets = useSafeAreaInsets();

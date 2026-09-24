@@ -1,16 +1,13 @@
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { useTheme } from '@/hooks/use-theme';
 import {
   clearCachedHabits,
-  createHabit,
   deleteHabit,
   fetchHabits,
   loadCachedHabits,
@@ -22,74 +19,50 @@ import {
 export function HabitsScreen() {
   const { session, signOut } = useAuth();
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [habits, setHabits] = useState<Habit[]>([]);
-  const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [empty, setEmpty] = useState(false);
 
   const userId = session?.user.id;
 
-  useEffect(() => {
-    if (!userId) {
+  const refresh = useCallback(async () => {
+    if (!userId || !session) {
       return;
     }
+    setError(null);
+    const cached = await loadCachedHabits(userId);
+    if (cached) {
+      setHabits(cached);
+    }
+    try {
+      const fresh = await fetchHabits(userId);
+      setHabits(fresh);
+      setEmpty(fresh.length === 0);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load habits');
+      setEmpty(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, session]);
 
-    let active = true;
-
-    (async () => {
-      setError(null);
-      const cached = await loadCachedHabits(userId);
-      if (active && cached) {
-        setHabits(cached);
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) {
+        return;
       }
-      try {
-        const fresh = await fetchHabits(userId);
-        if (active) {
-          setHabits(fresh);
-          setEmpty(fresh.length === 0);
-        }
-      } catch (e) {
-        if (active) {
-          setError(e instanceof Error ? e.message : 'Could not load habits');
-          setEmpty(false);
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [userId]);
+      void refresh();
+    }, [userId, refresh]),
+  );
 
   if (!session?.user.id) {
     return null;
   }
 
   const activeUserId = session.user.id;
-
-  async function handleAdd() {
-    const name = draft.trim();
-    if (!name) {
-      return;
-    }
-    setError(null);
-    try {
-      const habit = await createHabit(activeUserId, name);
-      const next = [...habits, habit];
-      setHabits(next);
-      await saveCachedHabits(activeUserId, next);
-      setEmpty(false);
-      setDraft('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not add habit');
-    }
-  }
 
   async function handleToggle(target: Habit) {
     setError(null);
@@ -122,174 +95,88 @@ export function HabitsScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.header}>
-          <ThemedText type="subtitle">My Habits</ThemedText>
-          <Pressable onPress={handleSignOut} style={({ pressed }) => pressed && styles.pressed}>
-            <ThemedView type="backgroundElement" style={styles.signOutButton}>
-              <ThemedText type="small">Sign out</ThemedText>
-            </ThemedView>
-          </Pressable>
-        </ThemedView>
+    <View className="flex-1 flex-row justify-center bg-white dark:bg-black">
+      <View className="max-w-[800px] flex-1">
+        <View
+          className="flex-row items-center justify-between px-6 pb-4"
+          style={{ paddingTop: insets.top + 24 }}>
+          <Text className="text-3xl font-semibold text-black dark:text-white">My Habits</Text>
+          <View className="flex-row items-center gap-2">
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/add')}
+              className="rounded-2xl bg-surface px-3 py-1 active:opacity-70 dark:bg-surface-dark">
+              <Text className="text-sm font-bold text-black dark:text-white">New</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={handleSignOut}
+              className="rounded-2xl bg-surface px-3 py-1 active:opacity-70 dark:bg-surface-dark">
+              <Text className="text-sm text-muted dark:text-muted-dark">Sign out</Text>
+            </Pressable>
+          </View>
+        </View>
 
-        <ThemedView type="backgroundElement" style={styles.addRow}>
-          <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Add a habit..."
-            placeholderTextColor={theme.textSecondary}
-            onSubmitEditing={handleAdd}
-            style={[styles.addInput, { color: theme.text }]}
-          />
-          <Pressable onPress={handleAdd} style={({ pressed }) => pressed && styles.pressed}>
-            <ThemedView type="backgroundSelected" style={styles.addButton}>
-              <ThemedText type="smallBold">Add</ThemedText>
-            </ThemedView>
-          </Pressable>
-        </ThemedView>
+        {error ? <Text className="mt-4 px-6 text-sm text-[#d9534f]">{error}</Text> : null}
 
-        {error ? (
-          <ThemedText type="small" style={styles.error}>
-            {error}
-          </ThemedText>
-        ) : null}
-
-        <ScrollView
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          contentInset={{ bottom: BottomTabInset + Spacing.three }}>
-          {loading && habits.length === 0 ? (
-            <ThemedView style={styles.stateRow}>
-              <ActivityIndicator />
-            </ThemedView>
-          ) : habits.length === 0 ? (
-            <ThemedText type="small" themeColor="textSecondary" style={styles.emptyState}>
-              {empty
-                ? 'No habits yet. Add one above to get started.'
-                : 'Habits are stored on your device until you reconnect.'}
-            </ThemedText>
-          ) : (
-            habits.map((habit) => (
-              <ThemedView key={habit.id} type="backgroundElement" style={styles.habitRow}>
-                <Pressable
-                  onPress={() => handleToggle(habit)}
-                  style={({ pressed }) => [
-                    styles.habitToggle,
-                    pressed && styles.pressed,
-                  ]}>
-                  <SymbolView
-                    tintColor={habit.completed_at ? theme.textSecondary : theme.text}
-                    name={{
-                      ios: habit.completed_at ? 'checkmark.circle.fill' : 'circle',
-                      android: habit.completed_at ? 'check_circle' : 'radio_button_unchecked',
-                      web: habit.completed_at ? 'check_circle' : 'radio_button_unchecked',
-                    }}
-                    size={22}
-                  />
-                  <ThemedText
-                    type="small"
-                    style={habit.completed_at ? styles.completedText : undefined}>
-                    {habit.name}
-                  </ThemedText>
-                </Pressable>
-                <Pressable
-                  onPress={() => handleDelete(habit.id)}
-                  hitSlop={8}
-                  style={({ pressed }) => pressed && styles.pressed}>
-                  <SymbolView
-                    tintColor={theme.textSecondary}
-                    name={{ ios: 'trash', android: 'delete', web: 'delete' }}
-                    size={18}
-                  />
-                </Pressable>
-              </ThemedView>
-            ))
+        <FlatList
+          data={habits}
+          keyExtractor={(item) => item.id}
+          className="mt-5"
+          contentContainerClassName="gap-2 px-6 pb-24"
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <View className="flex-row items-center justify-between gap-2 rounded-2xl bg-surface px-3 py-3 dark:bg-surface-dark">
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => handleToggle(item)}
+                className="flex-1 flex-row items-center gap-2">
+                <SymbolView
+                  tintColor={item.completed_at ? theme.textSecondary : theme.text}
+                  name={{
+                    ios: item.completed_at ? 'checkmark.circle.fill' : 'circle',
+                    android: item.completed_at ? 'check_circle' : 'radio_button_unchecked',
+                    web: item.completed_at ? 'check_circle' : 'radio_button_unchecked',
+                  }}
+                  size={22}
+                />
+                <Text
+                  className={
+                    item.completed_at
+                      ? 'flex-1 text-sm text-black line-through dark:text-white'
+                      : 'flex-1 text-sm text-black dark:text-white'
+                  }>
+                  {item.name}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => handleDelete(item.id)}
+                hitSlop={8}
+                className="active:opacity-70">
+                <SymbolView
+                  tintColor={theme.textSecondary}
+                  name={{ ios: 'trash', android: 'delete', web: 'delete' }}
+                  size={18}
+                />
+              </Pressable>
+            </View>
           )}
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+          ListEmptyComponent={
+            loading && habits.length === 0 ? (
+              <View className="items-center py-10">
+                <ActivityIndicator />
+              </View>
+            ) : (
+              <Text className="py-10 text-center text-sm text-muted dark:text-muted-dark">
+                {empty
+                  ? 'No habits yet. Tap New to get started.'
+                  : 'Habits are stored on your device until you reconnect.'}
+              </Text>
+            )
+          }
+        />
+      </View>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  safeArea: {
-    flex: 1,
-    maxWidth: MaxContentWidth,
-    paddingHorizontal: Spacing.four,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: Spacing.four,
-    paddingBottom: Spacing.three,
-  },
-  signOutButton: {
-    borderRadius: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
-  },
-  addRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    borderRadius: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-  },
-  addInput: {
-    flex: 1,
-    fontSize: 16,
-  },
-  addButton: {
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-  },
-  error: {
-    color: '#d9534f',
-    marginTop: Spacing.three,
-  },
-  list: {
-    marginTop: Spacing.three,
-  },
-  listContent: {
-    gap: Spacing.two,
-    paddingBottom: BottomTabInset + Spacing.five,
-  },
-  stateRow: {
-    paddingVertical: Spacing.five,
-    alignItems: 'center',
-  },
-  emptyState: {
-    textAlign: 'center',
-    paddingVertical: Spacing.five,
-  },
-  habitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-    borderRadius: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-  },
-  habitToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    flexShrink: 1,
-  },
-  completedText: {
-    textDecorationLine: 'line-through',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-});
